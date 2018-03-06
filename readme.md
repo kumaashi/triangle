@@ -5,5 +5,9 @@ Triangle Rasterizer for Windows.
 
 ![image](https://github.com/kumaashi/triangle/blob/master/image/000.png)
 
+- 001 - cube
+
+![image](https://github.com/kumaashi/triangle/blob/master/image/001.png)
+
 - ref.
 https://www.scratchapixel.com/
