@@ -9,5 +9,10 @@ Triangle Rasterizer for Windows.
 
 ![image](https://github.com/kumaashi/triangle/blob/master/image/001.png)
 
+
+- 002 - cube and z test
+
+![image](https://github.com/kumaashi/triangle/blob/master/image/002.png)
+
 - ref.
 https://www.scratchapixel.com/
