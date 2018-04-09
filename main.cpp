@@ -256,17 +256,15 @@ public:
 #define TILE_SIZE 48
 #define TILE_X_MAX (WIDTH  / TILE_SIZE)
 #define TILE_Y_MAX (HEIGHT / TILE_SIZE)
-#define INDEX_MAX 192
+#define INDEX_MAX 256
 #define BUF_MAX 32768
 #define _min(a, b) ((a <= b) ? a : b)
 #define _max(a, b) ((a >= b) ? a : b)
 #define _clamp(x, a, b) _min(_max(x, a), b)
 int buf_index = 0;
 float vtxbuf[BUF_MAX];
-uint32_t *zbuffer = nullptr;
-uint32_t tilebuffer[TILE_SIZE * TILE_SIZE];
+float zbuffer[WIDTH * HEIGHT];
 struct tileinfo {
-	int xmin, ymin, xmax, ymax;
 	int index;
 	uint8_t mark;
 };
@@ -334,7 +332,6 @@ void UpdateCache(void *bits, int width, int height) {
 				(rnd.getf() * 2.0 - 1.0) * radius,
 				(rnd.getf() * 2.0 - 1.0) * radius,
 		};
-		//float trans_pos[3] = { 0, 0, 0, };
 		float *pcube = cube_vertex;
 		for(int i = 0 ; i < 36; i++) {
 			float temp[4] = { pcube[0], pcube[1], pcube[2], 1.0f };
@@ -361,6 +358,7 @@ void UpdateCache(void *bits, int width, int height) {
 		}
 	}
 
+	static std::vector<SortInfo> vsortinfo;
 	vsortinfo.clear();
 	int sindex = 0;
 	for(int i = 0 ; i < buf_index; i += 9) {
@@ -380,13 +378,19 @@ void UpdateCache(void *bits, int width, int height) {
 		sindex++;
 	}
 
-	std::sort(vsortinfo.begin(), vsortinfo.end(),
-		[](const SortInfo &a, const SortInfo &b) {
-			return a.dist < b.dist;
-		});
+	//std::sort(vsortinfo.begin(), vsortinfo.end(),
+	//	[](const SortInfo &a, const SortInfo &b) {
+	//		return a.dist < b.dist;
+	//	});
+
 
 	static auto intersectRect = [](float *r1, float *r2) {
-		return !(r2[0] > r1[2] || r2[2] < r1[0] || r2[1] > r1[3] || r2[3] < r1[1]);
+		//return !(r2[0] > r1[2] || r2[2] < r1[0] || r2[1] > r1[3] || r2[3] < r1[1]);
+		return
+			(r1[0] < r2[2]) &&
+			(r1[2] > r2[0]) &&
+			(r1[1] < r2[3]) &&
+			(r1[3] > r2[1]);
 	};
 	for(int y = 0; y < TILE_Y_MAX; y++) {
 		for(int x = 0; x < TILE_X_MAX; x++) {
@@ -395,39 +399,33 @@ void UpdateCache(void *bits, int width, int height) {
 			rect[1] = y * TILE_SIZE;
 			rect[2] = rect[0] + TILE_SIZE;
 			rect[3] = rect[1] + TILE_SIZE;
+			/*
 			printf("%d %d %d %d\n", 
 				(int)rect[0],
 				(int)rect[1],
 				(int)rect[2],
 				(int)rect[3]);
-						
+			*/
 			int tile_top = 0;
 			for(int i = 0; i < sindex && tile_top < (INDEX_MAX - 1); i++) {
 				int vidx = vsortinfo[i].index;
 				float *v0 = &vtxbuf[vidx + 0];
 				float *v1 = &vtxbuf[vidx + 3];
 				float *v2 = &vtxbuf[vidx + 6];
-				float area = edgefunc(v0, v1, v2);
-				if(area < 0) {
-					continue;
-				}
 				float trirect[4] = {
-					_max(0.0       , _min(_min(v0[0], v1[0]), v2[0])),
-					_max(0.0       , _min(_min(v0[1], v1[1]), v2[1])),
-					_min(width  - 1, _max(_max(v0[0], v1[0]), v2[0])),
-					_min(height - 1, _max(_max(v0[1], v1[1]), v2[1])),
+					_min(_min(v0[0], v1[0]), v2[0]),
+					_min(_min(v0[1], v1[1]), v2[1]),
+					_max(_max(v0[0], v1[0]), v2[0]),
+					_max(_max(v0[1], v1[1]), v2[1]),
 				};
 				bool hit = intersectRect(trirect, rect);
 				if(hit) {
+					float area = edgefunc(v0, v1, v2);
+					if(area < 0) {
+						continue;
+					}
 					tileinfo info;
 					info.index = vidx;
-					info.xmin = _max(rect[0], trirect[0]);
-					info.ymin = _max(rect[1], trirect[1]);
-					info.xmax = _min(rect[2], trirect[2]);
-					info.ymax = _min(rect[3], trirect[3]);
-					if(info.xmin > info.xmax) continue;
-					if(info.ymin > info.ymax) continue;
-
 					info.mark = 0;
 					tileindex[x + y * TILE_X_MAX][tile_top++] = info;
 				}
@@ -440,89 +438,36 @@ void ClearScreen(void *bits, int width, int height, uint32_t color) {
 	uint32_t *dest = (uint32_t *)bits;
 	for(int i = 0 ; i < width * height; i++) {
 		dest[i] = color;
-		zbuffer[i] = 32768.0;
+		zbuffer[i] = 1.0;
 	}
 }
 
+Window window("triangle", WIDTH, HEIGHT);
 void RenderCache(void *bits, int width, int height) {
 	int triangle_count = 0;
 	static int counter = 0;
 	counter++;
 	unsigned long *dest = (unsigned long *)bits;
-
-	/*
-	//#pragma omp parallel for
-	for(int index = 0; index < buf_index; index += 9) {
-		float *v0 = &vtxbuf[index + 0];
-		float *v1 = &vtxbuf[index + 3];
-		float *v2 = &vtxbuf[index + 6];
-		float area = edgefunc(v0, v1, v2);
-		if(area < 0) {
-			continue;
-		}
-		area = 1.0 / area;
-		int min_x = (int)(_max(0.0       , _min(_min(v0[0], v1[0]), v2[0])));
-		int min_y = (int)(_max(0.0       , _min(_min(v0[1], v1[1]), v2[1])));
-		int max_x = (int)(_min(width  - 1, _max(_max(v0[0], v1[0]), v2[0])));
-		int max_y = (int)(_min(height - 1, _max(_max(v0[1], v1[1]), v2[1])));
-		v0[2] = 1.0 / v0[2];
-		v1[2] = 1.0 / v1[2];
-		v2[2] = 1.0 / v2[2];
-		triangle_count++;
-		for (int y = min_y; y <= max_y; y++) {
-			for (int x = min_x; x <= max_x; x++) {
-				float p[2] = {x, y};
-				float w0 = edgefunc(v1, v2, p);
-				float w1 = edgefunc(v2, v0, p);
-				float w2 = edgefunc(v0, v1, p);
-				float c0[4] = {1, 0, 0, 1};
-				float c1[4] = {0, 1, 0, 1};
-				float c2[4] = {0, 0, 1, 1};
-				if (w0 >= 0 && w1 >= 0 && w2 >= 0) {
-					w0 = (w0 * area);
-					w1 = (w1 * area);
-					w2 = (w2 * area);
-					float zd = 1.0 / (w0 * v0[2] + w1 * v1[2] + w2 * v2[2]);
-					float zd_test = zd * 32768.0;
-					int raster_index = x + y * width;
-					if(zbuffer[raster_index] > zd_test) {
-						zbuffer[raster_index] = zd_test;
-						w0 *= 256;
-						w1 *= 256;
-						w2 *= 256;
-						int r = zd * w0 * c0[0] + zd * w1 * c1[0] + zd * w2 * c2[0];
-						int g = zd * w0 * c0[1] + zd * w1 * c1[1] + zd * w2 * c2[1];
-						int b = zd * w0 * c0[2] + zd * w1 * c1[2] + zd * w2 * c2[2];
-						col32 c32;
-						c32.r = _clamp(r, 0,  0xFF);
-						c32.g = _clamp(g, 0,  0xFF);
-						c32.b = _clamp(b, 0,  0xFF);
-						dest[raster_index] = c32.rgba;
-					}
-				}
-			}
-		}
-	}
-	*/
 	for(int ty = 0; ty < TILE_Y_MAX; ty++) {
 		for(int tx = 0; tx < TILE_X_MAX; tx++) {
 			int rect[4];
 			rect[0] = tx * TILE_SIZE;
 			rect[1] = ty * TILE_SIZE;
-			rect[2] = rect[0] + TILE_SIZE;
-			rect[3] = rect[1] + TILE_SIZE;
+			rect[2] = rect[0] + TILE_SIZE - 1;
+			rect[3] = rect[1] + TILE_SIZE - 1;
 			//#pragma omp parallel for
 			for(int ti = 0; ti < INDEX_MAX; ti++) {
 				auto *tile = &tileindex[tx + ty * TILE_X_MAX][ti];
 				if(tile->mark != 0) break;
 				int index = tile->index;
-				int min_x = tile->xmin;
-				int min_y = tile->ymin;
-				int max_x = tile->xmax;
-				int max_y = tile->ymax;
 				float *v0 = &vtxbuf[index + 0];
 				float *v1 = &vtxbuf[index + 3];
 				float *v2 = &vtxbuf[index + 6];
+				
+				int min_x = _max(0,      _max(rect[0] , _min(_min(v0[0], v1[0]), v2[0])));
+				int min_y = _max(0,      _max(rect[1] , _min(_min(v0[1], v1[1]), v2[1])));
+				int max_x = _min(width ,  _min(rect[2] , _max(_max(v0[0], v1[0]), v2[0])));
+				int max_y = _min(height, _min(rect[3] , _max(_max(v0[1], v1[1]), v2[1])));
 				float area = edgefunc(v0, v1, v2);
 				if(area < 0) {
 					continue;
@@ -536,23 +481,26 @@ void RenderCache(void *bits, int width, int height) {
 					for (int x = min_x; x <= max_x; x++) {
 						int raster_index = x + y * width;
 						/*
+						dest[raster_index] = x ^ y;
+						continue;
 						if(dest[raster_index] != 0xFFFFFFFF) {
 							continue;
 						}
 						*/
-						float p[2] = {x, y};
+						float p[2] = {float(x), float(y)};
 						float w0 = edgefunc(v1, v2, p);
 						float w1 = edgefunc(v2, v0, p);
 						float w2 = edgefunc(v0, v1, p);
 						float c0[4] = {1, 0, 0, 1};
 						float c1[4] = {0, 1, 0, 1};
 						float c2[4] = {0, 0, 1, 1};
-						if (w0 >= 0 && w1 >= 0 && w2 >= 0) {
+						if (w0 >= 0 && w1 >= 0 && w2 >= 0)
+						{
 							w0 = (w0 * area);
 							w1 = (w1 * area);
 							w2 = (w2 * area);
-							float zd = 1.0 / (w0 * v0[2] + w1 * v1[2] + w2 * v2[2]);
-							float zd_test = zd * 32768.0;
+							float zd = area / (w0 * v0[2] + w1 * v1[2] + w2 * v2[2]);
+							float zd_test = zd;
 							if(zbuffer[raster_index] > zd_test) {
 								zbuffer[raster_index] = zd_test;
 								w0 *= 256;
@@ -562,7 +510,7 @@ void RenderCache(void *bits, int width, int height) {
 								int g = zd * w0 * c0[1] + zd * w1 * c1[1] + zd * w2 * c2[1];
 								int b = zd * w0 * c0[2] + zd * w1 * c1[2] + zd * w2 * c2[2];
 								col32 c32;
-								c32.r = _clamp(r, 0,  0xFF);
+								c32.r = r ^ g;//_clamp(r, 0,  0xFF);
 								c32.g = _clamp(g, 0,  0xFF);
 								c32.b = _clamp(b, 0,  0xFF);
 								dest[raster_index] = c32.rgba;
@@ -572,19 +520,15 @@ void RenderCache(void *bits, int width, int height) {
 				}
 			}
 		}
+		//window.Present();
+		//Sleep(100);
 	}
 	//printf("draw triangle_count=%d\n", triangle_count);
 }
 
 int main(int argc, char **argb) {
-	int Width  = WIDTH;
-	int Height = HEIGHT;
 	int align  = 256;
-	std::vector<uint32_t> zbuf(Width * Height + align);
-	zbuffer = zbuf.data();
-	zbuffer = (uint32_t*)( ((size_t)zbuffer + align) & ~(align - 1));
-	float ratio = float(Height) / float(Width);
-	Window window("triangle", Width, Height);
+	float ratio = float(HEIGHT) / float(WIDTH);
 	while(window.ProcMsg()) {
 		static ShowFps showfps;
 		ClearScreen(window.GetBits(), window.GetWidth(), window.GetHeight(), 0xFFFFFFFF);
