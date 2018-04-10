@@ -111,3 +111,30 @@ public:
 		SelectObject(hDIBDC, hDIB);
 	}
 };
+
+
+struct ShowFps {
+	DWORD last = timeGetTime();
+	DWORD frames = 0;
+	char buf[256] = "";
+	bool Update(HWND hWnd = nullptr) {
+		bool is_update = false;
+		DWORD current = 0;
+		current = timeGetTime();
+		frames++;
+		if(1000 <= current - last) {
+			float dt = (float)(current - last) / 1000.0f;
+			float fps = (float)frames / dt;
+			last = current;
+			frames = 0;
+			sprintf(buf, "%.02f fps", fps);
+			printf("FPS=%s\n", buf);
+			is_update = true;
+			if(hWnd) {
+				SetWindowText(hWnd, buf);
+			}
+		}
+		return is_update;
+	}
+};
+

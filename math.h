@@ -84,3 +84,18 @@ void M_perspective(float *dest, float fovy,  float aspect, float znear, float zf
 	dest[14] = (2 * zfar * znear) / (znear - zfar);
 }
 
+struct Random {
+	unsigned long a = 19842356, b = 225254, c = 3456789;
+	float scale = 1.0f;
+	Random(float s = 1.0f) : scale(s) {}
+	unsigned long get() {
+		a += b;
+		b += c;
+		c += a;
+		return (a >> 16);
+	}
+	float getf() {
+		return scale * float(get()) / float(0xFFFF);
+	}
+};
+

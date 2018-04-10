@@ -19,45 +19,6 @@ union col32 {
 	uint32_t rgba;
 };
 
-struct Random {
-	unsigned long a = 19842356, b = 225254, c = 3456789;
-	float scale = 1.0f;
-	Random(float s = 1.0f) : scale(s) {}
-	unsigned long get() {
-		a += b;
-		b += c;
-		c += a;
-		return (a >> 16);
-	}
-	float getf() {
-		return scale * float(get()) / float(0xFFFF);
-	}
-};
-
-struct ShowFps {
-	DWORD last = timeGetTime();
-	DWORD frames = 0;
-	char buf[256] = "";
-	bool Update(HWND hWnd = nullptr) {
-		bool is_update = false;
-		DWORD current = 0;
-		current = timeGetTime();
-		frames++;
-		if(1000 <= current - last) {
-			float dt = (float)(current - last) / 1000.0f;
-			float fps = (float)frames / dt;
-			last = current;
-			frames = 0;
-			sprintf(buf, "%.02f fps", fps);
-			printf("FPS=%s\n", buf);
-			is_update = true;
-			if(hWnd) {
-				SetWindowText(hWnd, buf);
-			}
-		}
-		return is_update;
-	}
-};
 
 #define WIDTH     320
 #define HEIGHT    240
